@@ -1,0 +1,17 @@
+
+    update: protectedProcedure
+      .input(
+        z.object({
+          id: z.number().int(),
+          date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          description: z.string().min(1).max(255).optional(),
+          category: categoryEnum.optional(),
+          amount: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(),
+          paymentMethod: paymentMethodEnum.optional(),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const { id, ...updateData } = input;
+        await updateTransaction(id, updateData);
+        return { success: true };
+      }),

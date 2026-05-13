@@ -1,0 +1,374 @@
+import { trpc } from "@/lib/trpc";
+import { CATEGORIES, PAYMENT_METHODS, type CategoryKey, type PaymentMethodKey } from "@shared/categories";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Trash2, TrendingUp, TrendingDown, Wallet, CalendarDays, ChevronLeft, ChevronRight, CreditCard, Edit2, Settings } from "lucide-react";
+import { useState, useMemo } from "react";
+import { useLocation } from "wouter";
+import { EditTransactionDialog } from "@/components/EditTransactionDialog";
+import { format, parseISO } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(value);
+}
+
+export default function Dashboard() {
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [editingTransaction, setEditingTransaction] = useState<any>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+
+  const summaryQuery = trpc.dashboard.summary.useQuery({ year, month });
+  const transactionsQuery = trpc.transactions.list.useQuery({ year, month });
+  const creditCardSummaryQuery = trpc.creditCard.summaryByBillCycle.useQuery({ billCycle: `${year}-${String(month).padStart(2, "0")}` });
+  const cardSettingsQuery = trpc.cardSettings.get.useQuery();
+  const utils = trpc.useUtils();
+
+  const deleteMutation = trpc.transactions.delete.useMutation({
+    onSuccess: () => {
+      utils.transactions.list.invalidate();
+      utils.dashboard.summary.invalidate();
+    },
+  });
+
+  const summary = summaryQuery.data;
+  const transactions = transactionsQuery.data ?? [];
+
+  // Group transactions by date
+  const groupedTransactions = useMemo(() => {
+    const groups: Record<string, typeof transactions> = {};
+    for (const t of transactions) {
+      const dateKey = t.date;
+      if (!groups[dateKey]) groups[dateKey] = [];
+      groups[dateKey].push(t);
+    }
+    return Object.entries(groups).sort(([a], [b]) => b.localeCompare(a));
+  }, [transactions]);
+
+  // Daily spending map for balance calculation
+  const dailySpendingMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const t of transactions) {
+      map[t.date] = (map[t.date] || 0) + parseFloat(t.amount);
+    }
+    return map;
+  }, [transactions]);
+
+  const navigateMonth = (direction: number) => {
+    let newMonth = month + direction;
+    let newYear = year;
+    if (newMonth > 12) { newMonth = 1; newYear++; }
+    if (newMonth < 1) { newMonth = 12; newYear--; }
+    setMonth(newMonth);
+    setYear(newYear);
+  };
+
+  const monthLabel = format(new Date(year, month - 1), "MMMM yyyy", { locale: ptBR });
+
+  const isLoading = summaryQuery.isLoading || transactionsQuery.isLoading;
+
+  // Calculate today's spending and balance
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const todaySpent = dailySpendingMap[todayStr] || 0;
+  const dailyBudget = summary?.dailyBudget ?? 66;
+  const todayRemaining = dailyBudget - todaySpent;
+
+  return (
+    <div className="space-y-4 pb-24">
+      {/* Month Navigation */}
+      <div className="flex items-center justify-between">
+        <Button variant="ghost" size="icon" onClick={() => navigateMonth(-1)}>
+          <ChevronLeft className="h-5 w-5" />
+        </Button>
+        <h2 className="text-lg font-semibold capitalize">{monthLabel}</h2>
+        <Button variant="ghost" size="icon" onClick={() => navigateMonth(1)}>
+          <ChevronRight className="h-5 w-5" />
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="h-24 rounded-xl bg-muted animate-pulse" />
+          ))}
+        </div>
+      ) : (
+        <>
+          {/* Summary Cards */}
+          <div className="grid grid-cols-2 gap-3">
+            {/* Saldo Acumulado - Full Width */}
+            <Card className={`col-span-2 border-0 shadow-sm ${(summary?.accumulatedBalance ?? 0) >= 0 ? "bg-emerald-50" : "bg-red-50"}`}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Saldo Acumulado</p>
+                    <p className={`text-2xl font-bold mt-1 ${(summary?.accumulatedBalance ?? 0) >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                      {formatCurrency(summary?.accumulatedBalance ?? 0)}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {(summary?.daysInMonth ?? 0)} dias x {formatCurrency(dailyBudget)} = {formatCurrency(summary?.monthlyBudget ?? 0)}
+                    </p>
+                  </div>
+                  <div className={`h-12 w-12 rounded-full flex items-center justify-center ${(summary?.accumulatedBalance ?? 0) >= 0 ? "bg-emerald-100" : "bg-red-100"}`}>
+                    {(summary?.accumulatedBalance ?? 0) >= 0 ? (
+                      <TrendingUp className="h-6 w-6 text-emerald-600" />
+                    ) : (
+                      <TrendingDown className="h-6 w-6 text-red-600" />
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Hoje */}
+            <Card className="border-0 shadow-sm">
+              <CardContent className="p-4">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Hoje</p>
+                <p className={`text-xl font-bold mt-1 ${todayRemaining >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                  {formatCurrency(todayRemaining)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Gasto: {formatCurrency(todaySpent)}
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Total Gasto */}
+            <Card className="border-0 shadow-sm">
+              <CardContent className="p-4">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total Gasto</p>
+                <p className="text-xl font-bold mt-1">{formatCurrency(summary?.totalSpent ?? 0)}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Média: {formatCurrency(summary?.averageDaily ?? 0)}/dia
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Cartão de Crédito */}
+            {creditCardSummaryQuery.data && cardSettingsQuery.data && (
+              <Card className="col-span-2 border-0 shadow-sm bg-blue-50 cursor-pointer hover:bg-blue-100 transition-colors" onClick={() => window.location.href = '/credit-card/faturas'}>
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Cartão de Crédito</p>
+                      <p className="text-2xl font-bold mt-1 text-blue-600">{formatCurrency(parseFloat(cardSettingsQuery.data.limit) - parseFloat(creditCardSummaryQuery.data.total))}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Utilizado: {formatCurrency(parseFloat(creditCardSummaryQuery.data.total))} de {formatCurrency(parseFloat(cardSettingsQuery.data.limit))}
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <div className="h-12 w-12 rounded-full flex items-center justify-center bg-blue-100">
+                        <CreditCard className="h-6 w-6 text-blue-600" />
+                      </div>
+                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); window.location.href = '/credit-card/settings'; }} className="h-8 w-8 p-0">
+                        <Settings className="h-4 w-4 text-blue-600" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          {/* Payment Method Breakdown */}
+          {summary?.paymentMethodSummary && summary.paymentMethodSummary.length > 0 && (
+            <Card className="border-0 shadow-sm">
+              <CardContent className="p-4">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                  <CreditCard className="h-3.5 w-3.5" />
+                  Por Forma de Pagamento
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {summary.paymentMethodSummary
+                    .sort((a, b) => parseFloat(b.total) - parseFloat(a.total))
+                    .map((pm) => {
+                      const pmInfo = PAYMENT_METHODS[pm.paymentMethod as PaymentMethodKey];
+                      return (
+                        <div key={pm.paymentMethod} className={`rounded-lg p-3 ${pmInfo?.color ?? "bg-muted"}`}>
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="text-sm">{pmInfo?.emoji}</span>
+                            <span className="text-xs font-medium">{pmInfo?.label}</span>
+                          </div>
+                          <p className="text-sm font-bold">{formatCurrency(parseFloat(pm.total))}</p>
+                          <p className="text-xs opacity-70">{pm.count} lançamento{pm.count > 1 ? "s" : ""}</p>
+                        </div>
+                      );
+                    })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Category Breakdown */}
+          {summary?.categorySummary && summary.categorySummary.length > 0 && (
+            <Card className="border-0 shadow-sm">
+              <CardContent className="p-4">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Por Categoria</p>
+                <div className="space-y-2">
+                  {summary.categorySummary
+                    .sort((a, b) => parseFloat(b.total) - parseFloat(a.total))
+                    .map((cat) => {
+                      const catInfo = CATEGORIES[cat.category as CategoryKey];
+                      const percentage = summary.totalSpent > 0 ? (parseFloat(cat.total) / summary.totalSpent) * 100 : 0;
+                      return (
+                        <div key={cat.category} className="flex items-center gap-3">
+                          <span className="text-lg w-7 text-center">{catInfo?.emoji}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="text-sm font-medium truncate">{catInfo?.label}</span>
+                              <span className="text-sm font-semibold">{formatCurrency(parseFloat(cat.total))}</span>
+                            </div>
+                            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-primary rounded-full transition-all"
+                                style={{ width: `${percentage}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Transaction Feed */}
+          <div>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">Lançamentos</p>
+            {groupedTransactions.length === 0 ? (
+              <Card className="border-0 shadow-sm">
+                <CardContent className="p-8 text-center">
+                  <Wallet className="h-10 w-10 text-muted-foreground/40 mx-auto mb-3" />
+                  <p className="text-sm text-muted-foreground">Nenhum gasto registrado neste mês.</p>
+                  <p className="text-xs text-muted-foreground mt-1">Use o botão + para lançar seu primeiro gasto!</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                {groupedTransactions.map(([dateKey, items]) => {
+                  const daySpent = dailySpendingMap[dateKey] || 0;
+                  const dayBalance = dailyBudget - daySpent;
+                  const dateObj = parseISO(dateKey);
+                  const dayLabel = format(dateObj, "dd 'de' MMMM", { locale: ptBR });
+                  const weekday = format(dateObj, "EEEE", { locale: ptBR });
+
+                  return (
+                    <div key={dateKey}>
+                      <div className="flex items-center justify-between mb-2 px-1">
+                        <div className="flex items-center gap-2">
+                          <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span className="text-sm font-medium capitalize">{weekday}, {dayLabel}</span>
+                        </div>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${dayBalance >= 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
+                          {dayBalance >= 0 ? "+" : ""}{formatCurrency(dayBalance)}
+                        </span>
+                      </div>
+                      <Card className="border-0 shadow-sm">
+                        <CardContent className="p-0 divide-y divide-border">
+                          {items.map((t) => {
+                            const catInfo = CATEGORIES[t.category as CategoryKey];
+                            const pmInfo = PAYMENT_METHODS[t.paymentMethod as PaymentMethodKey];
+                            const isInstallment = t.installments > 1;
+
+                            return (
+                              <div key={t.id} className="flex items-center gap-3 px-4 py-3">
+                                <span className="text-lg w-7 text-center">{catInfo?.emoji}</span>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium truncate">{t.description}</p>
+                                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                    {t.userName && (
+                                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-sky-100 text-sky-700">
+                                        {t.userName.split(' ')[0]}
+                                      </span>
+                                    )}
+                                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${pmInfo?.color ?? "bg-muted"}`}>
+                                      {pmInfo?.emoji} {pmInfo?.label}
+                                    </span>
+                                    {isInstallment && (
+                                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-violet-100 text-violet-700">
+                                        {t.installmentNumber}/{t.installments}x
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <span className="text-sm font-semibold text-red-600 whitespace-nowrap">
+                                  -{formatCurrency(parseFloat(t.amount))}
+                                </span>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-muted-foreground hover:text-primary shrink-0"
+                                  onClick={() => {
+                                    setEditingTransaction(t);
+                                    setEditDialogOpen(true);
+                                  }}
+                                >
+                                  <Edit2 className="h-3.5 w-3.5" />
+                                </Button>
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive shrink-0">
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Excluir lançamento?</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        Tem certeza que deseja excluir "{t.description}" ({formatCurrency(parseFloat(t.amount))})?
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={() => deleteMutation.mutate({ id: t.id })}
+                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                      >
+                                        Excluir
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
+                              </div>
+                            );
+                          })}
+                        </CardContent>
+                      </Card>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      <EditTransactionDialog
+        transaction={editingTransaction}
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        onSuccess={() => {
+          utils.transactions.list.invalidate();
+          utils.dashboard.summary.invalidate();
+        }}
+      />
+    </div>
+  );
+}

@@ -1,0 +1,119 @@
+# Project TODO
+
+- [x] Database schema: transactions table with date, description, category, amount, userId
+- [x] Database schema: settings table for daily budget config per user
+- [x] tRPC routes: CRUD for transactions (create, list, delete, update)
+- [x] tRPC routes: dashboard summary (monthly totals, daily balance, accumulated balance)
+- [x] Frontend: Global theming and design system (green/emerald theme, mobile-first)
+- [x] Frontend: DashboardLayout with sidebar navigation
+- [x] Frontend: Dashboard page with monthly summary cards and daily balance indicator
+- [x] Frontend: Transaction form (date, description, category, amount)
+- [x] Frontend: Transaction feed/list with category badges and delete action
+- [x] Frontend: Accumulated balance calculation and visual indicators (green/red)
+- [x] Frontend: Mobile-first responsive design
+- [x] Frontend: Quick-add floating action button for mobile
+- [x] Vitest tests for transaction CRUD procedures (14 tests passing)
+- [x] Final checkpoint and delivery
+- [x] Database: Add paymentMethod column (debito, credito, pix, dinheiro) to transactions
+- [x] Database: Add installments and installmentNumber columns to transactions
+- [x] Backend: Update tRPC routes to accept paymentMethod and installment data
+- [x] Frontend: Add payment method selector to transaction form
+- [x] Frontend: Add installment options (conditional on credit card selection)
+- [x] Frontend: Show payment method and installment info in transaction feed
+- [x] Frontend: Show payment method breakdown in dashboard
+- [x] Tests: Update vitest tests for new fields (19 tests passing)
+- [x] Fix: Saldo acumulado deve usar todos os dias do mês (calendário 2026), não apenas dias passados
+- [x] Database: Create families table (id, name, createdBy, inviteCode, createdAt)
+- [x] Database: Create family_members table (id, familyId, userId, role, joinedAt)
+- [x] Backend: tRPC routes for family CRUD (create, invite, join, leave, members list)
+- [x] Backend: Update transaction/dashboard queries to use family-wide data
+- [x] Frontend: Family management page (create family, show invite code, list members)
+- [x] Frontend: Join family flow (enter invite code)
+- [x] Frontend: Show member name on each transaction in the feed
+- [x] Tests: Write vitest tests for family features (26 tests passing)
+- [x] Backend: Add updateTransaction helper in db.ts
+- [x] Backend: Add transactions.update tRPC route
+- [x] Frontend: Edit transaction modal/dialog with pre-filled form
+- [x] Frontend: Add edit button to each transaction in the feed
+- [x] Tests: Write vitest tests for transaction update (26 tests passing)
+- [x] Backend: Add groupId column to credit_card_transactions para rastrear compras parceladas
+- [x] Backend: Criar lógica de distribuição de parcelas entre meses
+- [x] Backend: Atualizar tRPC route creditCard.create para distribuir parcelas
+- [x] Frontend: Atualizar formulário para aceitar data retroativa
+- [x] Frontend: Exibir progresso de parcelas (3/6) nas compras parceladas
+- [x] Testar lançamento retroativo de Dezembro/25 parcelado em 6x
+- [x] Publicar versão com parcelamento retroativo
+- [x] Frontend: Substituir campo de categoria do Cartão por seletor dinâmico com as mesmas categorias do Dashboard
+- [x] Bug: Investigar limite de 7 lançamentos no Cartão de Crédito (não há limite, apenas precisa rolar para ver)
+- [x] Frontend: Adicionar coluna de Cartão de Crédito no Dashboard com limite, utilização e próxima fatura
+- [x] Backend: Verificar e remover qualquer limite de lançamentos no Cartão e Renda (não há limite)
+- [x] Testar lançamentos ilimitados em ambas as abas
+- [x] Backend: Adicionar categorias ASSINATURA e Academia ao schema
+- [x] Frontend: Adicionar categorias ASSINATURA e Academia ao seletor
+- [x] Backend: Implementar campo de data de fechamento editável (já existia)
+- [x] Frontend: Criar página de Configurações de Cartão com campo editável de data de fechamento
+- [x] Backend: Implementar lógica de fatura dinâmica baseada em data de fechamento
+- [x] Frontend: Criar aba de Faturas mostrando fatura atual e futuras
+- [x] Testar lógica de fatura dinâmica com lançamentos antes e depois da data de fechamento
+- [x] Frontend: Adicionar botão de Settings no card de Cartão de Crédito do Dashboard
+- [x] Frontend: Estilizar Dashboard com emojis, cores vibrantes e tipografia melhorada
+- [x] Publicar versão final com todas as funcionalidades
+
+## Correção de Parcelamento
+
+- [x] Backend: Atualizar lógica para dividir valor total pelas parcelas (1000 ÷ 10 = 100)
+- [x] Frontend: Atualizar formulário de Cartão para aceitar valor total (não valor da parcela)
+- [x] Frontend: Adicionar campo de edição na aba de Cartão (como em "Novo Gasto")
+- [x] Backend: Criar rota creditCard.update para editar lançamentos
+- [x] Frontend: Integrar EditCreditCardDialog na página de Cartão
+- [x] Testar novo sistema de parcelamento com botão de editar
+- [x] Backend: Adicionar categorias DESPESAS CARRO e GASOLINA
+- [x] Frontend: Adicionar categorias DESPESAS CARRO e GASOLINA ao seletor
+
+## 🐛 BUG: Bill Cycle de Lançamentos Retroativos
+
+- [x] BUG: Compra retroativa após data de fechamento está sendo lançada no mês anterior
+  - Exemplo: Compra 26/02 parcelada em 2x deveria estar em Abril/Maio, mas aparece em Fevereiro/Março
+  - Causa: Lógica de cálculo de billCycle não considera que cartão já fechou naquela data
+  - Solução: Se compra é APÓS closingDay do mês → billCycle deve ser mês seguinte
+- [x] Corrigir função calculateBillCycle em server/db.ts
+  - Mudou de `day <= closingDay` para `day < closingDay`
+  - Adicionado parsing manual de data para evitar problemas de timezone
+  - Lógica corrigida para cálculo do próximo mês
+- [x] Testar cenário: compra 26/02 parcelada em 2x (1ª em Abril, 2ª em Maio)
+  - Todos os 39 testes passando, incluindo 13 testes de billcycle
+- [x] Validar que lançamentos aparecem na timeline correta
+
+## 🆕 Novas Funcionalidades Solicitadas
+
+- [x] Frontend: Página de Configurações de Cartão (CardSettings.tsx) já existe
+- [x] Frontend: Campo editável para limite do cartão - JA IMPLEMENTADO
+- [x] Frontend: Campo editável para data de fechamento do cartão - JA IMPLEMENTADO
+- [x] Backend: Rota tRPC para atualizar limite do cartão - JA IMPLEMENTADO
+- [x] Backend: Rota tRPC para atualizar data de fechamento do cartão - JA IMPLEMENTADO
+- [x] Frontend: Criar página de Relatório Comparativo (Renda vs Gastos por mês)
+  - Página /reports com navegação entre meses
+  - Gráfico de barras comparando Renda vs Gastos vs Cartão
+  - Gráfico de linha mostrando saldo mensal
+  - Cards com resumo: Renda, Gastos, Saldo, Percentual
+- [x] Frontend: Adicionar gráfico de comparação Renda vs Gastos no Relatório
+  - Gráfico de barras com últimos 12 meses
+  - Gráfico de linha com saldo mensal
+  - Dados dinâmicos baseados em income + transactions + creditCard
+- [x] Frontend: Implementar alertas quando utilização do cartão > 80% do limite
+  - Card de cartão fica vermelho quando > 80%
+  - Borda vermelha e aviso visual
+  - Percentual de utilização exibido
+- [x] Frontend: Mostrar aviso visual no Dashboard quando cartão está acima de 80%
+  - Mensagem "⚠️ ATENÇÃO: Limite de cartão acima de 80%!"
+  - Cores vermelhas para destaque
+- [x] Frontend: Adicionar botão de download de extrato em HTML
+  - Botão "Baixar Relatório (HTML)" na página de Relatórios
+  - Gera arquivo HTML com resumo financeiro
+  - Inclui Renda, Gastos, Saldo e Detalhamento
+- [x] Frontend: Adicionar link "Relatórios" no menu lateral
+  - Ícone BarChart3
+  - Acesso rápido à página de relatórios
+- [x] Testar todas as novas funcionalidades
+  - Servidor rodando sem erros
+  - Todas as páginas carregando corretamente

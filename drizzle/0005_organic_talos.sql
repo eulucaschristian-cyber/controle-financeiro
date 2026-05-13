@@ -1,0 +1,1 @@
+ALTER TABLE `credit_card_transactions` ADD `groupId` int;
