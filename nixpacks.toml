@@ -1,8 +1,11 @@
+[variables]
+COREPACK_INTEGRITY_KEYS = ""
+
 [phases.setup]
-nixPkgs = ["nodejs_20"]
+nixPkgs = ["nodejs_22"]
 
 [phases.install]
-cmds = ["COREPACK_INTEGRITY_KEYS=\"\" corepack enable && pnpm install --frozen-lockfile"]
+cmds = ["corepack enable && pnpm install --frozen-lockfile"]
 
 [phases.build]
 cmds = ["pnpm run build"]
