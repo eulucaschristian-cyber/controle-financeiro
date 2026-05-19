@@ -22,14 +22,14 @@ export default function CardSettingsPage() {
   });
 
   const [limit, setLimit] = useState<string>("");
-  const [closingDay, setClosingDay] = useState("");
-  const [dueDay, setDueDay] = useState("");
+  const [closingInterval, setClosingInterval] = useState("5");
+  const [dueDay, setDueDay] = useState("1");
   const [cardName, setCardName] = useState("");
 
   useEffect(() => {
     if (cardSettingsQuery.data) {
       setLimit(String(cardSettingsQuery.data.limit));
-      setClosingDay(cardSettingsQuery.data.closingDay.toString());
+      setClosingInterval(String(cardSettingsQuery.data.closingInterval ?? 5));
       setDueDay(cardSettingsQuery.data.dueDay.toString());
       setCardName(cardSettingsQuery.data.cardName);
     }
@@ -38,8 +38,8 @@ export default function CardSettingsPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     updateMutation.mutate({
-      limit: limit,
-      closingDay: parseInt(closingDay),
+      limit,
+      closingInterval: parseInt(closingInterval),
       dueDay: parseInt(dueDay),
       cardName,
     });
@@ -83,18 +83,18 @@ export default function CardSettingsPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="closingDay">Dia de Fechamento</Label>
+                <Label htmlFor="closingInterval">Dias antes do vencimento</Label>
                 <Input
-                  id="closingDay"
+                  id="closingInterval"
                   type="number"
                   min="1"
-                  max="31"
-                  value={closingDay}
-                  onChange={(e) => setClosingDay(e.target.value)}
-                  placeholder="26"
+                  max="15"
+                  value={closingInterval}
+                  onChange={(e) => setClosingInterval(e.target.value)}
+                  placeholder="5"
                 />
                 <p className="text-xs text-muted-foreground mt-1">
-                  Lançamentos após este dia entram na próxima fatura
+                  Quanto dias antes do dia 1 a fatura fecha
                 </p>
               </div>
 
@@ -138,9 +138,9 @@ export default function CardSettingsPage() {
             <div>
               <p className="text-sm font-semibold text-blue-900">Como funciona:</p>
               <ul className="text-xs text-blue-800 mt-2 space-y-1">
-                <li>• Lançamentos até o dia {closingDay} entram na fatura atual</li>
-                <li>• Lançamentos após o dia {closingDay} entram na próxima fatura</li>
-                <li>• A fatura vence no dia {dueDay} do mês seguinte</li>
+                <li>• A fatura fecha {closingInterval} dias antes do dia {dueDay}</li>
+                <li>• Ex: fatura de Abril fecha em torno do dia 26 (Mai 1 − {closingInterval} dias)</li>
+                <li>• Compras após o fechamento entram na fatura do mês seguinte</li>
               </ul>
             </div>
           </div>

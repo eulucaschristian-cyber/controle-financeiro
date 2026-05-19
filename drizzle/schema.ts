@@ -1,4 +1,4 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, date } from "drizzle-orm/mysql-core";
+import { boolean, int, mysqlEnum, mysqlTable, text, timestamp, varchar, decimal, date } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -20,18 +20,7 @@ export const transactions = mysqlTable("transactions", {
   userId: int("userId").notNull(),
   date: date("date", { mode: "string" }).notNull(),
   description: varchar("description", { length: 255 }).notNull(),
-  category: mysqlEnum("category", [
-    "alimentacao_fora",
-    "lazer",
-    "compras_online",
-    "mimos_outros",
-    "supermercado",
-    "pet",
-    "assinatura",
-    "academia",
-    "despesas_carro",
-    "gasolina",
-  ]).notNull(),
+  category: varchar("category", { length: 100 }).notNull(),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   paymentMethod: mysqlEnum("paymentMethod", [
     "debito",
@@ -113,6 +102,7 @@ export const cardSettings = mysqlTable("card_settings", {
   userId: int("userId").notNull().unique(),
   cardName: varchar("cardName", { length: 100 }).notNull().default("Porto Seguro"),
   closingDay: int("closingDay").notNull().default(26),
+  closingInterval: int("closingInterval").notNull().default(5),
   dueDay: int("dueDay").notNull().default(1),
   limit: decimal("limit", { precision: 10, scale: 2 }).notNull().default("5000.00"),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -120,3 +110,28 @@ export const cardSettings = mysqlTable("card_settings", {
 
 export type CardSettings = typeof cardSettings.$inferSelect;
 export type InsertCardSettings = typeof cardSettings.$inferInsert;
+
+export const invoicePayments = mysqlTable("invoice_payments", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  billCycle: varchar("billCycle", { length: 20 }).notNull(),
+  paidAt: date("paidAt", { mode: "string" }).notNull(),
+  paidAmount: decimal("paidAmount", { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type InvoicePayment = typeof invoicePayments.$inferSelect;
+export type InsertInvoicePayment = typeof invoicePayments.$inferInsert;
+
+export const customCategories = mysqlTable("custom_categories", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  key: varchar("key", { length: 100 }).notNull(),
+  label: varchar("label", { length: 100 }).notNull(),
+  emoji: varchar("emoji", { length: 10 }).notNull().default("📦"),
+  color: varchar("color", { length: 100 }).notNull().default("bg-gray-100 text-gray-700"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type CustomCategory = typeof customCategories.$inferSelect;
+export type InsertCustomCategory = typeof customCategories.$inferInsert;

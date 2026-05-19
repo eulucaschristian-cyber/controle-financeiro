@@ -57,6 +57,41 @@
       "when": 1775131608411,
       "tag": "0007_lean_silk_fever",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1778759315266,
+      "tag": "0008_large_callisto",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1778766504934,
+      "tag": "0009_violet_the_hunter",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1778767764583,
+      "tag": "0010_graceful_energizer",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1778770070150,
+      "tag": "0011_bizarre_miss_america",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1778853014732,
+      "tag": "0012_reflective_blizzard",
+      "breakpoints": true
     }
   ]
 }

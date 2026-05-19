@@ -27,22 +27,21 @@ import {
   createCreditCardTransaction,
   getCreditCardTransactionsByUserAndBillCycle,
   getCreditCardSummaryByBillCycle,
+  getCreditCardCategorySummaryByBillCycle,
   deleteCreditCardTransaction,
   getCardSettings,
   updateCardSettings,
+  calculateBillCycle,
+  getWalletBalance,
+  getCreditCardAvailableBalance,
   getDb,
 } from "./db";
-import { creditCardTransactions } from "../drizzle/schema";
+import { creditCardTransactions, invoicePayments, customCategories } from "../drizzle/schema";
 import { eq, and } from "drizzle-orm";
+import { importRouter } from "./importRouter";
 
-const categoryEnum = z.enum([
-  "alimentacao_fora",
-  "lazer",
-  "compras_online",
-  "mimos_outros",
-  "supermercado",
-  "pet",
-]);
+// Aceita tanto categorias fixas quanto customizadas do usuário
+const categoryEnum = z.string().min(1).max(100);
 
 const paymentMethodEnum = z.enum([
   "debito",
@@ -276,6 +275,15 @@ export const appRouter = router({
           paymentMethodSummary,
         };
       }),
+
+    walletBalance: protectedProcedure
+      .input(z.object({
+        year: z.number().int().min(2020).max(2100),
+        month: z.number().int().min(1).max(12),
+      }))
+      .query(async ({ ctx, input }) => {
+        return getWalletBalance(ctx.user.id, input.year, input.month);
+      }),
   }),
 
   settings: router({
@@ -355,20 +363,7 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         const ids: number[] = [];
         const settings = await getCardSettings(ctx.user.id);
-        const closingDay = settings.closingDay;
-
-        function calculateBillCycle(dateStr: string, closingDay: number): string {
-          const [year, month, day] = dateStr.split("-").map(Number);
-          const dateNum = day;
-
-          if (dateNum < closingDay) {
-            return `${year}-${String(month).padStart(2, "0")}`;
-          } else {
-            const nextMonth = month === 12 ? 1 : month + 1;
-            const nextYear = month === 12 ? year + 1 : year;
-            return `${nextYear}-${String(nextMonth).padStart(2, "0")}`;
-          }
-        }
+        const closingInterval = settings.closingInterval ?? 5;
 
         // A função createCreditCardTransaction já cuida da distribuição de parcelas
         const id = await createCreditCardTransaction({
@@ -378,6 +373,7 @@ export const appRouter = router({
           amount: input.amount,
           category: input.category,
           installments: input.installments,
+          closingInterval,
         });
 
         return { ids: [id] };
@@ -393,6 +389,12 @@ export const appRouter = router({
       .input(z.object({ billCycle: z.string().regex(/^\d{4}-\d{2}$/) }))
       .query(async ({ ctx, input }) => {
         return getCreditCardSummaryByBillCycle(ctx.user.id, input.billCycle);
+      }),
+
+    categorySummaryByBillCycle: protectedProcedure
+      .input(z.object({ billCycle: z.string().regex(/^\d{4}-\d{2}$/) }))
+      .query(async ({ ctx, input }) => {
+        return getCreditCardCategorySummaryByBillCycle(ctx.user.id, input.billCycle);
       }),
 
     delete: protectedProcedure
@@ -429,6 +431,10 @@ export const appRouter = router({
 
         return { success: true };
       }),
+
+    availableBalance: protectedProcedure.query(async ({ ctx }) => {
+      return getCreditCardAvailableBalance(ctx.user.id);
+    }),
   }),
 
   cardSettings: router({
@@ -440,12 +446,162 @@ export const appRouter = router({
         z.object({
           cardName: z.string().min(1).max(100).optional(),
           closingDay: z.number().int().min(1).max(31).optional(),
+          closingInterval: z.number().int().min(1).max(15).optional(),
           dueDay: z.number().int().min(1).max(31).optional(),
           limit: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
         await updateCardSettings(ctx.user.id, input);
+        return { success: true };
+      }),
+  }),
+  import: importRouter,
+
+  invoice: router({
+    getPayment: protectedProcedure
+      .input(z.object({ billCycle: z.string().regex(/^\d{4}-\d{2}$/) }))
+      .query(async ({ ctx, input }) => {
+        const db = await getDb();
+        if (!db) return null;
+        const rows = await db
+          .select()
+          .from(invoicePayments)
+          .where(
+            and(
+              eq(invoicePayments.userId, ctx.user.id),
+              eq(invoicePayments.billCycle, input.billCycle)
+            )
+          )
+          .limit(1);
+        return rows[0] ?? null;
+      }),
+
+    markPaid: protectedProcedure
+      .input(
+        z.object({
+          billCycle: z.string().regex(/^\d{4}-\d{2}$/),
+          paidAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          paidAmount: z.string().regex(/^\d+(\.\d{1,2})?$/),
+        })
+      )
+      .mutation(async ({ ctx, input }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        // upsert — remove anterior e insere novo
+        await db
+          .delete(invoicePayments)
+          .where(
+            and(
+              eq(invoicePayments.userId, ctx.user.id),
+              eq(invoicePayments.billCycle, input.billCycle)
+            )
+          );
+        await db.insert(invoicePayments).values({
+          userId: ctx.user.id,
+          billCycle: input.billCycle,
+          paidAt: input.paidAt,
+          paidAmount: input.paidAmount,
+        });
+
+        // Calcula juros por atraso e lança na fatura do mês seguinte
+        const settings = await getCardSettings(ctx.user.id);
+        const dueDay = settings.dueDay ?? 1;
+        const [cycleYear, cycleMonth] = input.billCycle.split("-").map(Number);
+
+        // Data de vencimento real desta fatura
+        const dueDate = new Date(cycleYear, cycleMonth - 1, dueDay);
+        const paidDate = new Date(input.paidAt);
+
+        const diasAtraso = Math.floor((paidDate.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+
+        if (diasAtraso > 0) {
+          // Taxa Porto Seguro: 12,89% a.m. → diária simples
+          const taxaDiaria = 0.1289 / 30;
+          const valorPago = parseFloat(input.paidAmount);
+          const juros = parseFloat((valorPago * taxaDiaria * diasAtraso).toFixed(2));
+
+          // Lança na fatura do mês seguinte
+          const nextMonth = cycleMonth === 12 ? 1 : cycleMonth + 1;
+          const nextYear = cycleMonth === 12 ? cycleYear + 1 : cycleYear;
+          const nextBillCycle = `${nextYear}-${String(nextMonth).padStart(2, "0")}`;
+          const nextDate = `${nextYear}-${String(nextMonth).padStart(2, "0")}-01`;
+
+          await db.insert(creditCardTransactions).values({
+            userId: ctx.user.id,
+            date: nextDate,
+            description: `Juros por atraso — fatura ${String(cycleMonth).padStart(2, "0")}/${cycleYear} (${diasAtraso} dias)`,
+            amount: juros.toFixed(2),
+            category: "juros",
+            installments: 1,
+            installmentNumber: 1,
+            billCycle: nextBillCycle,
+          });
+
+          return { success: true, diasAtraso, juros, nextBillCycle };
+        }
+
+        return { success: true, diasAtraso: 0, juros: 0, nextBillCycle: null };
+      }),
+
+    unmarkPaid: protectedProcedure
+      .input(z.object({ billCycle: z.string().regex(/^\d{4}-\d{2}$/) }))
+      .mutation(async ({ ctx, input }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        await db
+          .delete(invoicePayments)
+          .where(
+            and(
+              eq(invoicePayments.userId, ctx.user.id),
+              eq(invoicePayments.billCycle, input.billCycle)
+            )
+          );
+        return { success: true };
+      }),
+  }),
+
+  customCategories: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const db = await getDb();
+      if (!db) throw new Error("Database not available");
+      return db.select().from(customCategories).where(eq(customCategories.userId, ctx.user.id));
+    }),
+
+    create: protectedProcedure
+      .input(z.object({
+        label: z.string().min(1).max(100),
+        emoji: z.string().min(1).max(10),
+        color: z.string().min(1).max(100),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        // Gera key a partir do label (slug)
+        const key = input.label
+          .toLowerCase()
+          .normalize("NFD").replace(/[̀-ͯ]/g, "")
+          .replace(/[^a-z0-9]+/g, "_")
+          .replace(/^_|_$/g, "")
+          .slice(0, 80) + "_" + Date.now().toString(36);
+        const result = await db.insert(customCategories).values({
+          userId: ctx.user.id,
+          key,
+          label: input.label,
+          emoji: input.emoji,
+          color: input.color,
+        });
+        return { id: result[0].insertId, key };
+      }),
+
+    delete: protectedProcedure
+      .input(z.object({ id: z.number().int() }))
+      .mutation(async ({ ctx, input }) => {
+        const db = await getDb();
+        if (!db) throw new Error("Database not available");
+        await db.delete(customCategories).where(
+          and(eq(customCategories.id, input.id), eq(customCategories.userId, ctx.user.id))
+        );
         return { success: true };
       }),
   }),

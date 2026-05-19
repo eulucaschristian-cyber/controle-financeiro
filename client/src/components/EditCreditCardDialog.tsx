@@ -16,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CATEGORY_OPTIONS } from "@shared/categories";
+import { useCategories } from "@/hooks/useCategories";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
@@ -43,6 +43,7 @@ export function EditCreditCardDialog({
   onOpenChange,
   onSuccess,
 }: EditCreditCardDialogProps) {
+  const { categoryOptions } = useCategories();
   const [formData, setFormData] = useState({
     date: transaction?.date || "",
     description: transaction?.description || "",
@@ -121,7 +122,7 @@ export function EditCreditCardDialog({
                 <SelectValue placeholder="Selecione uma categoria" />
               </SelectTrigger>
               <SelectContent>
-                {CATEGORY_OPTIONS.map((cat) => (
+                {categoryOptions.map((cat) => (
                   <SelectItem key={cat.value} value={cat.value}>
                     {cat.label}
                   </SelectItem>

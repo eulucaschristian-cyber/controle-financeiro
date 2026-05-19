@@ -1,0 +1,1 @@
+ALTER TABLE `card_settings` ADD `closingInterval` int DEFAULT 5 NOT NULL;

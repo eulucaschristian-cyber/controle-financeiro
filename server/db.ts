@@ -1,6 +1,6 @@
 import { eq, and, inArray, desc, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users, transactions, userSettings, families, familyMembers, income, creditCardTransactions, cardSettings, type InsertTransaction } from "../drizzle/schema";
+import { InsertUser, users, transactions, userSettings, families, familyMembers, income, creditCardTransactions, cardSettings, invoicePayments, type InsertTransaction } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -453,31 +453,27 @@ export async function deleteIncome(id: number, userId: number) {
 
 // === CREDIT CARD HELPERS ===
 
-export async function createCreditCardTransaction(data: { userId: number; date: string; description: string; amount: string; category: string; installments: number; billCycle?: string }) {
+export async function createCreditCardTransaction(data: { userId: number; date: string; description: string; amount: string; category: string; installments: number; billCycle?: string; closingInterval?: number }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  
-  // Se for parcelado (installments > 1), criar múltiplas transações
+
+  const closingInterval = data.closingInterval ?? 5;
+
   if (data.installments > 1) {
-    // Parse da data corretamente
     const [year, month, day] = data.date.split('-').map(Number);
-    const purchaseDate = new Date(year, month - 1, day); // month é 0-indexed
-    const groupId = Math.floor(Math.random() * 1000000); // ID único para agrupar parcelas
+    const purchaseDate = new Date(year, month - 1, day);
+    const groupId = Math.floor(Math.random() * 1000000);
     const insertIds: number[] = [];
-    
-    // Dividir o valor total pelas parcelas
+
     const totalAmount = parseFloat(data.amount);
     const installmentAmount = (totalAmount / data.installments).toFixed(2);
-    
+
     for (let i = 1; i <= data.installments; i++) {
-      // Calcular a data de cada parcela (primeira no mês da compra, depois nos próximos meses)
       const installmentDate = new Date(purchaseDate);
       installmentDate.setMonth(installmentDate.getMonth() + (i - 1));
       const dateStr = `${installmentDate.getFullYear()}-${String(installmentDate.getMonth() + 1).padStart(2, '0')}-${String(installmentDate.getDate()).padStart(2, '0')}`;
-      
-      // Calcular o billCycle para esta parcela
-      const billCycle = calculateBillCycle(dateStr);
-      
+      const billCycle = calculateBillCycle(dateStr, { closingInterval });
+
       const result = await db.insert(creditCardTransactions).values({
         userId: data.userId,
         date: dateStr,
@@ -486,15 +482,14 @@ export async function createCreditCardTransaction(data: { userId: number; date: 
         category: data.category,
         installments: data.installments,
         installmentNumber: i,
-        billCycle: billCycle,
-        groupId: groupId,
+        billCycle,
+        groupId,
       });
       insertIds.push(result[0].insertId);
     }
-    return insertIds[0]; // Retorna o ID da primeira parcela
+    return insertIds[0];
   } else {
-    // Se não for parcelado, criar uma única transação
-    const billCycle = data.billCycle || calculateBillCycle(data.date);
+    const billCycle = data.billCycle || calculateBillCycle(data.date, { closingInterval });
     const result = await db.insert(creditCardTransactions).values({
       userId: data.userId,
       date: data.date,
@@ -503,38 +498,44 @@ export async function createCreditCardTransaction(data: { userId: number; date: 
       category: data.category,
       installments: 1,
       installmentNumber: 1,
-      billCycle: billCycle,
+      billCycle,
     });
     return result[0].insertId;
   }
 }
 
 // Função auxiliar para calcular billCycle baseado na data
-function calculateBillCycle(date: string, closingDay: number = 26): string {
-  // Parsear data manualmente para evitar problemas de timezone
-  // Formato esperado: YYYY-MM-DD
+// Calcula o dia de fechamento real de um mês, dado o intervalo (dias antes do dia 1 do mês seguinte)
+export function getClosingDayForMonth(year: number, month0: number, closingInterval: number): number {
+  const nextMonthFirst = new Date(year, month0 + 1, 1);
+  nextMonthFirst.setDate(nextMonthFirst.getDate() - closingInterval);
+  return nextMonthFirst.getDate();
+}
+
+// Retorna o billCycle = mês de VENCIMENTO (mês em que você paga a fatura)
+// closingInterval: dias antes do dia 1 do mês seguinte (ex: 5 → fecha dia 26/27/27 dependendo do mês)
+// closingDay: dia fixo fallback (usado se closingInterval não for passado)
+export function calculateBillCycle(
+  date: string,
+  options: { closingDay?: number; closingInterval?: number } = {}
+): string {
   const [yearStr, monthStr, dayStr] = date.split('-');
   const day = parseInt(dayStr, 10);
-  const month = parseInt(monthStr, 10) - 1;  // Converter para 0-indexed
+  const month0 = parseInt(monthStr, 10) - 1;
   const year = parseInt(yearStr, 10);
-  
-  // Se o dia é ANTES do dia de fechamento, a fatura é deste mês
-  // Se o dia é NO fechamento ou DEPOIS, a fatura é do próximo mês
-  if (day < closingDay) {
-    return `${year}-${String(month + 1).padStart(2, '0')}`;
-  } else {
-    // Fatura do próximo mês
-    let billMonth = month + 1;  // Próximo mês (0-indexed)
-    let billYear = year;
-    
-    if (billMonth >= 12) {
-      billMonth = 0;  // Janeiro do próximo ano
-      billYear = year + 1;
-    }
-    
-    // Converter para 1-indexed para o formato YYYY-MM
-    return `${billYear}-${String(billMonth + 1).padStart(2, '0')}`;
-  }
+
+  const closingDay = options.closingInterval != null
+    ? getClosingDayForMonth(year, month0, options.closingInterval)
+    : (options.closingDay ?? 26);
+
+  // dia < fechamento → ciclo fecha neste mês → vence no MÊS SEGUINTE
+  // dia >= fechamento → ciclo fecha no mês seguinte → vence em DOIS meses
+  const monthsToAdd = day < closingDay ? 1 : 2;
+  const totalMonths = month0 + monthsToAdd;
+  const dueYear = year + Math.floor(totalMonths / 12);
+  const dueMonth0 = totalMonths % 12;
+
+  return `${dueYear}-${String(dueMonth0 + 1).padStart(2, '0')}`;
 }
 
 export async function getCreditCardTransactionsByUserAndBillCycle(userId: number, billCycle: string) {
@@ -551,6 +552,27 @@ export async function getCreditCardTransactionsByUserAndBillCycle(userId: number
       )
     )
     .orderBy(desc(creditCardTransactions.date));
+}
+
+export async function getCreditCardCategorySummaryByBillCycle(userId: number, billCycle: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const result = await db
+    .select({
+      category: creditCardTransactions.category,
+      total: sql<string>`CAST(SUM(${creditCardTransactions.amount}) AS CHAR)`,
+    })
+    .from(creditCardTransactions)
+    .where(
+      and(
+        eq(creditCardTransactions.userId, userId),
+        eq(creditCardTransactions.billCycle, billCycle)
+      )
+    )
+    .groupBy(creditCardTransactions.category);
+
+  return result;
 }
 
 export async function getCreditCardSummaryByBillCycle(userId: number, billCycle: string) {
@@ -591,15 +613,16 @@ export async function getCardSettings(userId: number) {
       userId,
       cardName: "Porto Seguro",
       closingDay: 26,
+      closingInterval: 5,
       dueDay: 1,
       limit: "5000.00",
     });
-    return { userId, cardName: "Porto Seguro", closingDay: 26, dueDay: 1, limit: "5000.00" };
+    return { userId, cardName: "Porto Seguro", closingDay: 26, closingInterval: 5, dueDay: 1, limit: "5000.00" };
   }
   return result[0];
 }
 
-export async function updateCardSettings(userId: number, data: { cardName?: string; closingDay?: number; dueDay?: number; limit?: string }) {
+export async function updateCardSettings(userId: number, data: { cardName?: string; closingDay?: number; closingInterval?: number; dueDay?: number; limit?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
@@ -607,4 +630,83 @@ export async function updateCardSettings(userId: number, data: { cardName?: stri
     .insert(cardSettings)
     .values({ userId, ...data })
     .onDuplicateKeyUpdate({ set: data });
+}
+
+// === WALLET BALANCE ===
+// Saldo acumulado da carteira até o fim do mês informado:
+//   + soma de todas as rendas (income)
+//   - soma de todos os débito/pix (transactions, excluindo crédito)
+//   - soma de todos os pagamentos de fatura (invoicePayments)
+export async function getWalletBalance(userId: number, year: number, month: number): Promise<{
+  totalIncome: number;
+  totalExpenses: number;
+  totalInvoicePayments: number;
+  balance: number;
+}> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Último dia do mês informado
+  const lastDay = new Date(year, month, 0);
+  const upTo = `${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, "0")}-${String(lastDay.getDate()).padStart(2, "0")}`;
+
+  const [incomeRes, expensesRes, paymentsRes] = await Promise.all([
+    // Soma toda a renda até o mês
+    db.select({ total: sql<string>`COALESCE(SUM(amount), 0)` })
+      .from(income)
+      .where(and(eq(income.userId, userId), sql`date <= ${upTo}`)),
+
+    // Soma todas as saídas em débito/pix/dinheiro até o mês
+    db.select({ total: sql<string>`COALESCE(SUM(amount), 0)` })
+      .from(transactions)
+      .where(and(
+        eq(transactions.userId, userId),
+        sql`date <= ${upTo}`,
+        sql`paymentMethod != 'credito'`,
+      )),
+
+    // Soma todos os pagamentos de fatura até o mês
+    db.select({ total: sql<string>`COALESCE(SUM(paidAmount), 0)` })
+      .from(invoicePayments)
+      .where(and(eq(invoicePayments.userId, userId), sql`paidAt <= ${upTo}`)),
+  ]);
+
+  const totalIncome = parseFloat(incomeRes[0]?.total ?? "0");
+  const totalExpenses = parseFloat(expensesRes[0]?.total ?? "0");
+  const totalInvoicePayments = parseFloat(paymentsRes[0]?.total ?? "0");
+  const balance = totalIncome - totalExpenses - totalInvoicePayments;
+
+  return { totalIncome, totalExpenses, totalInvoicePayments, balance };
+}
+
+// === CARTÃO DE CRÉDITO: SALDO DISPONÍVEL ===
+// Saldo disponível no cartão = limite - total comprometido
+// Total comprometido = soma de TODOS os lançamentos no cartão (todas as parcelas, todas as faturas)
+//                    - soma de todos os pagamentos de fatura já realizados
+// Inclui parcelas futuras já comprometidas (ex: compra em 12x → todas as 12 parcelas contam)
+export async function getCreditCardAvailableBalance(userId: number): Promise<{
+  totalCharged: number;
+  totalPaid: number;
+  totalOutstanding: number;
+}> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const [chargedRes, paidRes] = await Promise.all([
+    // Soma todos os lançamentos no cartão (incluindo parcelas futuras já comprometidas)
+    db.select({ total: sql<string>`COALESCE(SUM(amount), 0)` })
+      .from(creditCardTransactions)
+      .where(eq(creditCardTransactions.userId, userId)),
+
+    // Soma todos os pagamentos de fatura já feitos
+    db.select({ total: sql<string>`COALESCE(SUM(paidAmount), 0)` })
+      .from(invoicePayments)
+      .where(eq(invoicePayments.userId, userId)),
+  ]);
+
+  const totalCharged = parseFloat(chargedRes[0]?.total ?? "0");
+  const totalPaid = parseFloat(paidRes[0]?.total ?? "0");
+  const totalOutstanding = Math.max(0, totalCharged - totalPaid);
+
+  return { totalCharged, totalPaid, totalOutstanding };
 }

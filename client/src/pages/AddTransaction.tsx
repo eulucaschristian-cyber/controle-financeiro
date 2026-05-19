@@ -1,5 +1,6 @@
 import { trpc } from "@/lib/trpc";
-import { CATEGORY_OPTIONS, PAYMENT_METHOD_OPTIONS } from "@shared/categories";
+import { PAYMENT_METHOD_OPTIONS } from "@shared/categories";
+import { useCategories } from "@/hooks/useCategories";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,6 +15,7 @@ import { format } from "date-fns";
 export default function AddTransaction() {
   const [, setLocation] = useLocation();
   const utils = trpc.useUtils();
+  const { categoryOptions } = useCategories();
 
   const today = format(new Date(), "yyyy-MM-dd");
   const [date, setDate] = useState(today);
@@ -24,15 +26,21 @@ export default function AddTransaction() {
   const [installments, setInstallments] = useState(1);
 
   const createMutation = trpc.transactions.create.useMutation({
-    onSuccess: (data) => {
+    onSuccess: () => {
       utils.transactions.list.invalidate();
       utils.dashboard.summary.invalidate();
       if (installments > 1) {
-        toast.success(`Gasto parcelado em ${installments}x registrado com sucesso!`);
+        toast.success(`Gasto parcelado em ${installments}x registrado!`);
       } else {
-        toast.success("Gasto registrado com sucesso!");
+        toast.success("Gasto registrado!");
       }
-      setLocation("/");
+      // Reseta o formulário e permanece na página
+      setDescription("");
+      setAmount("");
+      setCategory("");
+      setPaymentMethod("debito");
+      setInstallments(1);
+      setDate(today);
     },
     onError: (err) => {
       toast.error("Erro ao registrar gasto: " + err.message);
@@ -192,7 +200,7 @@ export default function AddTransaction() {
                   <SelectValue placeholder="Selecione a categoria" />
                 </SelectTrigger>
                 <SelectContent>
-                  {CATEGORY_OPTIONS.map((opt) => (
+                  {categoryOptions.map((opt) => (
                     <SelectItem key={opt.value} value={opt.value} className="h-11">
                       {opt.label}
                     </SelectItem>

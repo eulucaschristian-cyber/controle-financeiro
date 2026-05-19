@@ -1,8 +1,55 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { appRouter } from "./routers";
 import type { TrpcContext } from "./_core/context";
 
 type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
+
+// State simulado para os testes
+const familyStore: Record<number, { familyId: number; familyName: string; role: string }> = {};
+const families: Record<number, { id: number; name: string; inviteCode: string; createdBy: number }> = {};
+let nextFamilyId = 1;
+
+vi.mock("./db", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./db")>();
+  return {
+    ...original,
+    getUserFamily: vi.fn().mockImplementation(async (userId: number) => {
+      return familyStore[userId] ?? null;
+    }),
+    createFamily: vi.fn().mockImplementation(async (name: string, userId: number) => {
+      const familyId = nextFamilyId++;
+      const inviteCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+      families[familyId] = { id: familyId, name, inviteCode, createdBy: userId };
+      familyStore[userId] = { familyId, familyName: name, role: "admin" };
+      return { familyId, inviteCode };
+    }),
+    getFamilyByInviteCode: vi.fn().mockImplementation(async (code: string) => {
+      return Object.values(families).find((f) => f.inviteCode === code) ?? null;
+    }),
+    joinFamily: vi.fn().mockImplementation(async (familyId: number, userId: number) => {
+      const alreadyMember = !!familyStore[userId];
+      if (!alreadyMember) {
+        const family = families[familyId];
+        familyStore[userId] = { familyId, familyName: family?.name ?? "", role: "member" };
+      }
+      return { alreadyMember };
+    }),
+    getFamilyMembers: vi.fn().mockImplementation(async (familyId: number) => {
+      return Object.entries(familyStore)
+        .filter(([, v]) => v.familyId === familyId)
+        .map(([userId, v]) => ({
+          userId: Number(userId),
+          name: `User ${userId}`,
+          role: v.role,
+          joinedAt: new Date(),
+        }));
+    }),
+    leaveFamily: vi.fn().mockImplementation(async (userId: number) => {
+      delete familyStore[userId];
+    }),
+    getFamilyMemberIds: vi.fn().mockResolvedValue([1]),
+  };
+});
 
 function createAuthContext(userId: number = 1, name: string = "Lucas"): { ctx: TrpcContext } {
   const user: AuthenticatedUser = {
@@ -24,8 +71,8 @@ function createAuthContext(userId: number = 1, name: string = "Lucas"): { ctx: T
       headers: {},
     } as TrpcContext["req"],
     res: {
-      clearCookie: () => {},
-    } as TrpcContext["res"],
+      clearCookie: vi.fn(),
+    } as unknown as TrpcContext["res"],
   };
 
   return { ctx };
@@ -56,7 +103,6 @@ describe("family router", () => {
 
     const family = await caller.family.get();
     expect(family).not.toBeNull();
-    // The family name is created in the first test, so it should be "Família Santos"
     expect(family?.familyName).toBeDefined();
   });
 
@@ -75,7 +121,6 @@ describe("family router", () => {
     const { ctx } = createAuthContext(1, "Lucas");
     const caller = appRouter.createCaller(ctx);
 
-    // User 1 already has a family from the previous test
     await expect(caller.family.create({ name: "Outra Família" })).rejects.toThrow(
       "Você já faz parte de uma família"
     );

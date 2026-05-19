@@ -302,3 +302,20 @@ class SDKServer {
 }
 
 export const sdk = new SDKServer();
+
+// LOCAL AUTH OVERRIDE
+const _originalAuthenticateRequest = sdk.authenticateRequest.bind(sdk);
+sdk.authenticateRequest = async function(req: Request): Promise<User | null> {
+  try {
+    const cookieHeader = req.headers.cookie || "";
+    const cookies = parseCookieHeader(cookieHeader);
+    const sessionCookie = cookies["session"];
+    if (!sessionCookie) return null;
+    const session = JSON.parse(decodeURIComponent(sessionCookie));
+    if (!session?.userId) return null;
+    const user = await db.getUserByOpenId(session.openId);
+    return user || null;
+  } catch {
+    return null;
+  }
+};

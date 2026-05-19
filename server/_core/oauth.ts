@@ -1,53 +1,49 @@
-import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
-import type { Express, Request, Response } from "express";
-import * as db from "../db";
-import { getSessionCookieOptions } from "./cookies";
-import { sdk } from "./sdk";
+import { Express } from "express";
+import { getDb } from "../db";
+import { users } from "../../drizzle/schema";
+import { eq } from "drizzle-orm";
 
-function getQueryParam(req: Request, key: string): string | undefined {
-  const value = req.query[key];
-  return typeof value === "string" ? value : undefined;
-}
+export function registerOAuthRoutes(app: Express, baseURL: string) {
+  console.log("[Auth] Using local auth mode");
 
-export function registerOAuthRoutes(app: Express) {
-  app.get("/api/oauth/callback", async (req: Request, res: Response) => {
-    const code = getQueryParam(req, "code");
-    const state = getQueryParam(req, "state");
+  app.get("/auth/login", async (req, res) => {
+    const db = await getDb();
+    if (!db) return res.redirect("/");
 
-    if (!code || !state) {
-      res.status(400).json({ error: "code and state are required" });
-      return;
-    }
+    let user = await db.select().from(users).where(eq(users.openId, "local-user")).limit(1);
 
-    try {
-      const tokenResponse = await sdk.exchangeCodeForToken(code, state);
-      const userInfo = await sdk.getUserInfo(tokenResponse.accessToken);
-
-      if (!userInfo.openId) {
-        res.status(400).json({ error: "openId missing from user info" });
-        return;
-      }
-
-      await db.upsertUser({
-        openId: userInfo.openId,
-        name: userInfo.name || null,
-        email: userInfo.email ?? null,
-        loginMethod: userInfo.loginMethod ?? userInfo.platform ?? null,
+    if (user.length === 0) {
+      await db.insert(users).values({
+        openId: "local-user",
+        name: "Lucas",
+        email: "lucas@local.dev",
+        loginMethod: "local",
+        role: "admin",
         lastSignedIn: new Date(),
       });
-
-      const sessionToken = await sdk.createSessionToken(userInfo.openId, {
-        name: userInfo.name || "",
-        expiresInMs: ONE_YEAR_MS,
-      });
-
-      const cookieOptions = getSessionCookieOptions(req);
-      res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: ONE_YEAR_MS });
-
-      res.redirect(302, "/");
-    } catch (error) {
-      console.error("[OAuth] Callback failed", error);
-      res.status(500).json({ error: "OAuth callback failed" });
+      user = await db.select().from(users).where(eq(users.openId, "local-user")).limit(1);
     }
+
+    res.cookie("session", JSON.stringify({ userId: user[0].id, openId: "local-user" }), {
+      httpOnly: true, maxAge: 7 * 24 * 60 * 60 * 1000
+    });
+    res.redirect("/");
   });
+
+  app.get("/auth/logout", (req, res) => {
+    res.clearCookie("session");
+    res.redirect("/");
+  });
+}
+
+export function initOAuth(app: Express, baseURL: string) {
+  return registerOAuthRoutes(app, baseURL);
+}
+
+export function getLoginUrl(baseURL?: string) {
+  return "/auth/login";
+}
+
+export function getLogoutUrl(baseURL?: string) {
+  return "/auth/logout";
 }

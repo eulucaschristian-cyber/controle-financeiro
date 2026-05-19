@@ -1,4 +1,5 @@
-import { CATEGORIES, CATEGORY_OPTIONS, type CategoryKey } from "@shared/categories";
+import { type CategoryKey } from "@shared/categories";
+import { useCategories } from "@/hooks/useCategories";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +46,7 @@ function getNextBillCycle(): string {
 
 export default function CreditCardPage() {
   const now = new Date();
+  const { categoryOptions } = useCategories();
   const [date, setDate] = useState(format(now, "yyyy-MM-dd"));
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
@@ -201,7 +203,7 @@ export default function CreditCardPage() {
                 onChange={(e) => setCategory(e.target.value as CategoryKey)}
                 className="w-full mt-1 px-3 py-2 border rounded-md text-sm"
               >
-                {CATEGORY_OPTIONS.map((option) => (
+                {categoryOptions.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>

@@ -1,107 +1,73 @@
 import { describe, it, expect } from 'vitest';
+import { calculateBillCycle, getClosingDayForMonth } from './db';
 
-/**
- * Função auxiliar para calcular billCycle baseado na data
- * (copiada de db.ts para teste)
- */
-function calculateBillCycle(date: string, closingDay: number = 26): string {
-  // Parsear data manualmente para evitar problemas de timezone
-  // Formato esperado: YYYY-MM-DD
-  const [yearStr, monthStr, dayStr] = date.split('-');
-  const day = parseInt(dayStr, 10);
-  const month = parseInt(monthStr, 10) - 1;  // Converter para 0-indexed
-  const year = parseInt(yearStr, 10);
-  
-  // Se o dia é ANTES do dia de fechamento, a fatura é deste mês
-  // Se o dia é NO fechamento ou DEPOIS, a fatura é do próximo mês
-  if (day < closingDay) {
-    return `${year}-${String(month + 1).padStart(2, '0')}`;
-  } else {
-    // Fatura do próximo mês
-    let billMonth = month + 1;  // Próximo mês (0-indexed)
-    let billYear = year;
-    
-    if (billMonth >= 12) {
-      billMonth = 0;  // Janeiro do próximo ano
-      billYear = year + 1;
-    }
-    
-    // Converter para 1-indexed para o formato YYYY-MM
-    return `${billYear}-${String(billMonth + 1).padStart(2, '0')}`;
-  }
-}
+describe('getClosingDayForMonth', () => {
+  it('Janeiro (31 dias) com intervalo 5 → fecha dia 27', () => {
+    expect(getClosingDayForMonth(2026, 0, 5)).toBe(27); // Jan=0
+  });
+  it('Fevereiro (28 dias) com intervalo 5 → fecha dia 24', () => {
+    expect(getClosingDayForMonth(2026, 1, 5)).toBe(24); // Feb=1
+  });
+  it('Março (31 dias) com intervalo 5 → fecha dia 27', () => {
+    expect(getClosingDayForMonth(2026, 2, 5)).toBe(27);
+  });
+  it('Abril (30 dias) com intervalo 5 → fecha dia 26', () => {
+    expect(getClosingDayForMonth(2026, 3, 5)).toBe(26);
+  });
+  it('Maio (31 dias) com intervalo 5 → fecha dia 27', () => {
+    expect(getClosingDayForMonth(2026, 4, 5)).toBe(27);
+  });
+});
 
-describe('calculateBillCycle', () => {
-  describe('Cenário do usuário: Compra em 26/02/2026 parcelada em 2x', () => {
-    it('Compra em 25/02 (antes do fechamento) deve estar em Fevereiro', () => {
-      const result = calculateBillCycle('2026-02-25', 26);
-      expect(result).toBe('2026-02');
+describe('calculateBillCycle — retorna mês de VENCIMENTO', () => {
+  describe('Compras em Abril (fecha dia 26, vence dia 1 de Maio)', () => {
+    it('05/04 (antes do fechamento) → vence em Maio', () => {
+      expect(calculateBillCycle('2026-04-05', { closingInterval: 5 })).toBe('2026-05');
     });
-
-    it('Compra em 26/02 (NO fechamento) deve estar em Março (próxima fatura)', () => {
-      const result = calculateBillCycle('2026-02-26', 26);
-      expect(result).toBe('2026-03');
+    it('25/04 (antes do fechamento) → vence em Maio', () => {
+      expect(calculateBillCycle('2026-04-25', { closingInterval: 5 })).toBe('2026-05');
     });
-
-    it('Compra em 27/02 (depois do fechamento) deve estar em Março', () => {
-      const result = calculateBillCycle('2026-02-27', 26);
-      expect(result).toBe('2026-03');
+    it('26/04 (no fechamento) → vence em Junho', () => {
+      expect(calculateBillCycle('2026-04-26', { closingInterval: 5 })).toBe('2026-06');
     });
-
-    it('Compra em 28/02 (depois do fechamento) deve estar em Março', () => {
-      const result = calculateBillCycle('2026-02-28', 26);
-      expect(result).toBe('2026-03');
+    it('30/04 (após fechamento) → vence em Junho', () => {
+      expect(calculateBillCycle('2026-04-30', { closingInterval: 5 })).toBe('2026-06');
     });
   });
 
-  describe('Casos gerais', () => {
-    it('Compra em 01/01 deve estar em Janeiro', () => {
-      const result = calculateBillCycle('2026-01-01', 26);
-      expect(result).toBe('2026-01');
+  describe('Compras em Março (fecha dia 27, vence dia 1 de Abril)', () => {
+    it('26/03 (antes do fechamento) → vence em Abril', () => {
+      expect(calculateBillCycle('2026-03-26', { closingInterval: 5 })).toBe('2026-04');
     });
-
-    it('Compra em 25/01 deve estar em Janeiro', () => {
-      const result = calculateBillCycle('2026-01-25', 26);
-      expect(result).toBe('2026-01');
+    it('27/03 (no fechamento) → vence em Maio', () => {
+      expect(calculateBillCycle('2026-03-27', { closingInterval: 5 })).toBe('2026-05');
     });
-
-    it('Compra em 26/01 deve estar em Fevereiro (próxima fatura)', () => {
-      const result = calculateBillCycle('2026-01-26', 26);
-      expect(result).toBe('2026-02');
-    });
-
-    it('Compra em 31/01 deve estar em Fevereiro', () => {
-      const result = calculateBillCycle('2026-01-31', 26);
-      expect(result).toBe('2026-02');
+    it('30/03 (após fechamento) → vence em Maio', () => {
+      expect(calculateBillCycle('2026-03-30', { closingInterval: 5 })).toBe('2026-05');
     });
   });
 
-  describe('Transição de ano', () => {
-    it('Compra em 26/12 deve estar em Janeiro do próximo ano', () => {
-      const result = calculateBillCycle('2025-12-26', 26);
-      expect(result).toBe('2026-01');
+  describe('Transição de ano (Dezembro → Janeiro)', () => {
+    it('25/12 (antes do fechamento 27) → vence em Janeiro', () => {
+      expect(calculateBillCycle('2025-12-25', { closingInterval: 5 })).toBe('2026-01');
     });
-
-    it('Compra em 25/12 deve estar em Dezembro', () => {
-      const result = calculateBillCycle('2025-12-25', 26);
-      expect(result).toBe('2025-12');
+    it('27/12 (no fechamento) → vence em Fevereiro', () => {
+      expect(calculateBillCycle('2025-12-27', { closingInterval: 5 })).toBe('2026-02');
     });
   });
 
-  describe('Diferentes dias de fechamento', () => {
-    it('Com closingDay=15, compra em 14/02 deve estar em Fevereiro', () => {
-      const result = calculateBillCycle('2026-02-14', 15);
-      expect(result).toBe('2026-02');
+  describe('Fallback com closingDay fixo', () => {
+    it('25/02 com closingDay=26 → vence em Março', () => {
+      expect(calculateBillCycle('2026-02-25', { closingDay: 26 })).toBe('2026-03');
     });
-
-    it('Com closingDay=15, compra em 15/02 deve estar em Março', () => {
-      const result = calculateBillCycle('2026-02-15', 15);
-      expect(result).toBe('2026-03');
+    it('26/02 (no fechamento) com closingDay=26 → vence em Abril', () => {
+      expect(calculateBillCycle('2026-02-26', { closingDay: 26 })).toBe('2026-04');
     });
-
-    it('Com closingDay=10, compra em 10/02 deve estar em Março', () => {
-      const result = calculateBillCycle('2026-02-10', 10);
-      expect(result).toBe('2026-03');
+    it('01/01 com closingDay=26 → vence em Fevereiro', () => {
+      expect(calculateBillCycle('2026-01-01', { closingDay: 26 })).toBe('2026-02');
+    });
+    it('31/01 com closingDay=26 → vence em Março', () => {
+      expect(calculateBillCycle('2026-01-31', { closingDay: 26 })).toBe('2026-03');
     });
   });
 });

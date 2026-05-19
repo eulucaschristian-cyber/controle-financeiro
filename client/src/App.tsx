@@ -14,6 +14,9 @@ import CreditCardPage from "./pages/CreditCard";
 import CardSettings from "./pages/CardSettings";
 import Invoices from "./pages/Invoices";
 import Reports from "./pages/Reports";
+import ImportarExtrato from "./pages/ImportarExtrato";
+import CategoryDetail from "./pages/CategoryDetail";
+import ScanComprovante from "./pages/ScanComprovante";
 
 function Router() {
   return (
@@ -26,7 +29,10 @@ function Router() {
         <Route path="/credit-card/settings" component={CardSettings} />
         <Route path="/credit-card/faturas" component={Invoices} />
         <Route path="/reports" component={Reports} />
+        <Route path="/import" component={ImportarExtrato} />
         <Route path="/family" component={Family} />
+        <Route path="/categoria/:category/:year/:month" component={CategoryDetail} />
+        <Route path="/scan" component={ScanComprovante} />
         <Route path="/settings" component={Settings} />
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
