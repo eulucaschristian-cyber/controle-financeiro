@@ -2,6 +2,7 @@ import { protectedProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 
 import { getDb, getCardSettings, calculateBillCycle } from "./db";
+import { getNomesProdutosConhecidos } from "./precosRouter";
 import { creditCardTransactions } from "../drizzle/schema";
 import { eq, and } from "drizzle-orm";
 
@@ -317,12 +318,19 @@ parcela: null se não parcelado`;
 
   scanComprovante: protectedProcedure
     .input(z.object({
-      imageBase64: z.string(),
-      mimeType: z.string().default("image/jpeg"),
+      imagens: z.array(z.object({
+        base64: z.string(),
+        mimeType: z.string().default("image/jpeg"),
+      })).min(1).max(4),
     }))
-    .mutation(async ({ input }) => {
-      const prompt = `Você é um extrator de dados de comprovantes brasileiros (cupom fiscal, recibo, nota).
+    .mutation(async ({ ctx, input }) => {
+      const nomesConhecidos = await getNomesProdutosConhecidos(ctx.user.id).catch(() => [] as string[]);
+      const blocoNomes = nomesConhecidos.length
+        ? `\nPRODUTOS JÁ CADASTRADOS (se o item for um destes, use EXATAMENTE o mesmo "nome"):\n${nomesConhecidos.map((n) => `- ${n}`).join("\n")}\n`
+        : "";
 
+      const prompt = `Você é um extrator de dados de comprovantes brasileiros (cupom fiscal, NFC-e, recibo, nota).
+${input.imagens.length > 1 ? `\nAs ${input.imagens.length} imagens são partes do MESMO comprovante, em ordem. Não duplique itens que apareçam em duas fotos.\n` : ""}
 Analise a imagem e extraia as informações do comprovante.
 
 RETORNE APENAS JSON VÁLIDO sem markdown:
@@ -332,9 +340,21 @@ RETORNE APENAS JSON VÁLIDO sem markdown:
   "valor": 123.45,
   "descricao": "descrição curta (ex: Compra Supermercado Extra)",
   "categoria": "supermercado",
-  "itens": ["item 1 - R$ X,XX", "item 2 - R$ X,XX"]
+  "itens": [
+    { "nomeCupom": "LEITE INTEG ITALAC 1L", "nome": "Leite Integral Italac 1L", "quantidade": 2, "unidade": "un", "precoUnitario": 5.49, "precoTotal": 10.98 }
+  ]
 }
 
+REGRAS DOS ITENS:
+- Liste TODOS os produtos do cupom, um por linha do cupom
+- "nomeCupom": texto exatamente como está impresso
+- "nome": nome legível e padronizado — produto + marca + tamanho (ex: "Arroz Branco Camil 5kg", "Banana Prata", "Coca-Cola 2L")
+- "unidade": "un" para unidades, "kg" para itens pesados (frutas, carnes, frios a granel), "l" se vendido por litro
+- Itens pesados: "quantidade" = peso em kg (ex: 0.785) e "precoUnitario" = preço por kg
+- "precoTotal" = valor final da linha. Se houver desconto no item, aplique no precoTotal e recalcule precoUnitario
+- "valor" = total pago na nota (após descontos)
+- Se não for nota de compra com itens (ex: comprovante de Pix), retorne "itens": []
+${blocoNomes}
 CATEGORIAS (use exatamente):
 - "restaurante" → restaurantes, lanchonetes, fast food, delivery
 - "supermercado" → supermercados, mercados, hortifruti
@@ -363,18 +383,19 @@ Se não conseguir ler algum campo, use null.`;
         },
         body: JSON.stringify({
           model: "claude-opus-4-5",
-          max_tokens: 1024,
+          // Nota de mercado com 50+ itens em JSON passa fácil de 1k tokens
+          max_tokens: 8000,
           messages: [{
             role: "user",
             content: [
-              {
+              ...input.imagens.map((img) => ({
                 type: "image",
                 source: {
                   type: "base64",
-                  media_type: input.mimeType,
-                  data: input.imageBase64,
+                  media_type: img.mimeType,
+                  data: img.base64,
                 },
-              },
+              })),
               { type: "text", text: prompt },
             ],
           }],
@@ -387,6 +408,9 @@ Se não conseguir ler algum campo, use null.`;
       }
 
       const data = await response.json();
+      if (data?.stop_reason === "max_tokens") {
+        throw new Error("Nota grande demais para uma leitura. Tente dividir em fotos menores.");
+      }
       const raw = data?.content?.[0]?.text ?? "";
       const limpo = raw.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
 
@@ -408,13 +432,35 @@ Se não conseguir ler algum campo, use null.`;
         }
       }
 
+      const num = (v: unknown) => {
+        const n = typeof v === "number" ? v : parseFloat(String(v ?? "").replace(",", "."));
+        return isNaN(n) ? 0 : Math.abs(n);
+      };
+      const itens = (Array.isArray(parsed.itens) ? parsed.itens : [])
+        .filter((i: any) => i && typeof i === "object")
+        .map((i: any) => {
+          const quantidade = num(i.quantidade) || 1;
+          const precoTotal = num(i.precoTotal);
+          const precoUnitario = num(i.precoUnitario) || (precoTotal ? precoTotal / quantidade : 0);
+          const nomeCupom = String(i.nomeCupom ?? i.nome ?? "").trim();
+          return {
+            rawName: nomeCupom,
+            productName: String(i.nome ?? nomeCupom).trim(),
+            quantity: quantidade,
+            unit: ["un", "kg", "l"].includes(i.unidade) ? i.unidade : "un",
+            unitPrice: Math.round(precoUnitario * 100) / 100,
+            totalPrice: Math.round((precoTotal || precoUnitario * quantidade) * 100) / 100,
+          };
+        })
+        .filter((i: any) => i.rawName && i.totalPrice > 0);
+
       return {
         estabelecimento: parsed.estabelecimento ?? "Estabelecimento",
         date: dateISO,
-        amount: Math.abs(parseFloat(parsed.valor) || 0),
+        amount: num(parsed.valor),
         description: parsed.descricao ?? parsed.estabelecimento ?? "Compra",
         category: parsed.categoria ?? "compras_online",
-        itens: parsed.itens ?? [],
+        itens,
       };
     }),
 });

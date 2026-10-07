@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/sidebar";
 import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, PlusCircle, Settings, LogOut, PanelLeft, Wallet, Users, TrendingUp, CreditCard, BarChart3, Upload, ScanLine } from "lucide-react";
+import { LayoutDashboard, PlusCircle, Settings, LogOut, PanelLeft, Wallet, Users, TrendingUp, CreditCard, BarChart3, Upload, ScanLine, Tag } from "lucide-react";
 import { CSSProperties, useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
@@ -31,6 +31,7 @@ const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
   { icon: PlusCircle, label: "Novo Gasto", path: "/add" },
   { icon: ScanLine, label: "Scan Comprovante", path: "/scan" },
+  { icon: Tag, label: "Preços Mercado", path: "/precos" },
   { icon: TrendingUp, label: "Renda", path: "/income" },
   { icon: CreditCard, label: "Cartão", path: "/credit-card" },
   { icon: BarChart3, label: "Relatórios", path: "/reports" },

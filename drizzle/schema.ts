@@ -135,3 +135,21 @@ export const customCategories = mysqlTable("custom_categories", {
 
 export type CustomCategory = typeof customCategories.$inferSelect;
 export type InsertCustomCategory = typeof customCategories.$inferInsert;
+
+// Histórico de preços de produtos lidos das notinhas de mercado
+export const groceryPrices = mysqlTable("grocery_prices", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").notNull(),
+  purchaseDate: date("purchaseDate", { mode: "string" }).notNull(),
+  store: varchar("store", { length: 150 }).notNull(),
+  rawName: varchar("rawName", { length: 255 }).notNull(), // como veio no cupom (ex: "LEITE INTEG ITALAC 1L")
+  productName: varchar("productName", { length: 150 }).notNull(), // nome padronizado (ex: "Leite Integral Italac 1L")
+  quantity: decimal("quantity", { precision: 10, scale: 3 }).notNull().default("1.000"),
+  unit: varchar("unit", { length: 10 }).notNull().default("un"),
+  unitPrice: decimal("unitPrice", { precision: 10, scale: 2 }).notNull(),
+  totalPrice: decimal("totalPrice", { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type GroceryPrice = typeof groceryPrices.$inferSelect;
+export type InsertGroceryPrice = typeof groceryPrices.$inferInsert;

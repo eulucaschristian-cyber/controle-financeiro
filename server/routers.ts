@@ -39,6 +39,7 @@ import {
 import { creditCardTransactions, invoicePayments, customCategories } from "../drizzle/schema";
 import { eq, and } from "drizzle-orm";
 import { importRouter } from "./importRouter";
+import { precosRouter } from "./precosRouter";
 
 // Aceita tanto categorias fixas quanto customizadas do usuário
 const categoryEnum = z.string().min(1).max(100);
@@ -457,6 +458,7 @@ export const appRouter = router({
       }),
   }),
   import: importRouter,
+  precos: precosRouter,
 
   invoice: router({
     getPayment: protectedProcedure

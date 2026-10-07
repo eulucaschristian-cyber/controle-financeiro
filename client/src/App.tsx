@@ -17,6 +17,7 @@ import Reports from "./pages/Reports";
 import ImportarExtrato from "./pages/ImportarExtrato";
 import CategoryDetail from "./pages/CategoryDetail";
 import ScanComprovante from "./pages/ScanComprovante";
+import Precos from "./pages/Precos";
 
 function Router() {
   return (
@@ -33,6 +34,7 @@ function Router() {
         <Route path="/family" component={Family} />
         <Route path="/categoria/:category/:year/:month" component={CategoryDetail} />
         <Route path="/scan" component={ScanComprovante} />
+        <Route path="/precos" component={Precos} />
         <Route path="/settings" component={Settings} />
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
