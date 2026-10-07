@@ -6,6 +6,16 @@ import { getNomesProdutosConhecidos } from "./precosRouter";
 import { creditCardTransactions } from "../drizzle/schema";
 import { eq, and } from "drizzle-orm";
 
+// Sonnet 5.5: lê cupom/fatura com boa precisão a ~40% do custo do Opus 4.5
+const READER_MODEL = "claude-sonnet-5-5";
+
+// Pega o primeiro bloco de texto da resposta (pode haver blocos de outro tipo antes)
+function extrairTextoResposta(data: any): string {
+  if (data?.stop_reason === "refusal") throw new Error("A IA recusou processar este conteúdo.");
+  const bloco = (data?.content ?? []).find((b: any) => b?.type === "text");
+  return bloco?.text ?? "";
+}
+
 export const importRouter = router({
 
   analisarTexto: protectedProcedure
@@ -91,7 +101,9 @@ parcela: null se não parcelado`;
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model: "claude-opus-4-5",
+          model: READER_MODEL,
+          // Sem raciocínio estendido: extração direta é suficiente e evita gastar tokens de thinking
+          thinking: { type: "between_tools" },
           max_tokens: 8000,
           messages: [{ role: "user", content: prompt }],
         }),
@@ -103,7 +115,7 @@ parcela: null se não parcelado`;
       }
 
       const anthropicData = await anthropicResponse.json();
-      const raw = anthropicData?.content?.[0]?.text;
+      const raw = extrairTextoResposta(anthropicData);
       if (!raw) throw new Error("IA não retornou resposta");
 
       const texto = typeof raw === "string" ? raw : JSON.stringify(raw);
@@ -382,7 +394,9 @@ Se não conseguir ler algum campo, use null.`;
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model: "claude-opus-4-5",
+          model: READER_MODEL,
+          // Sem raciocínio estendido: extração direta é suficiente e evita gastar tokens de thinking
+          thinking: { type: "between_tools" },
           // Nota de mercado com 50+ itens em JSON passa fácil de 1k tokens
           max_tokens: 8000,
           messages: [{
@@ -411,7 +425,7 @@ Se não conseguir ler algum campo, use null.`;
       if (data?.stop_reason === "max_tokens") {
         throw new Error("Nota grande demais para uma leitura. Tente dividir em fotos menores.");
       }
-      const raw = data?.content?.[0]?.text ?? "";
+      const raw = extrairTextoResposta(data);
       const limpo = raw.replace(/```json\s*/gi, "").replace(/```\s*/gi, "").trim();
 
       let parsed: any;
