@@ -430,7 +430,7 @@ export async function getIncomeSummaryByMonth(userId: number, year: number, mont
 
   const result = await db
     .select({
-      total: sql<string>`CAST(SUM(${income.amount}) AS CHAR)`,
+      total: sql<string>`CAST(COALESCE(SUM(${income.amount}), 0) AS CHAR)`,
       count: sql<number>`COUNT(*)`,
     })
     .from(income)
@@ -581,7 +581,7 @@ export async function getCreditCardSummaryByBillCycle(userId: number, billCycle:
 
   const result = await db
     .select({
-      total: sql<string>`CAST(SUM(${creditCardTransactions.amount}) AS CHAR)`,
+      total: sql<string>`CAST(COALESCE(SUM(${creditCardTransactions.amount}), 0) AS CHAR)`,
       count: sql<number>`COUNT(*)`,
     })
     .from(creditCardTransactions)
