@@ -13,8 +13,14 @@ export async function setupVite(app: Express, server: Server) {
     allowedHosts: true as const,
   };
 
+  // vite.config.ts exporta uma função (defineConfig async) — precisa ser resolvida antes do spread
+  const resolvedConfig =
+    typeof viteConfig === "function"
+      ? await viteConfig({ command: "serve", mode: "development" })
+      : viteConfig;
+
   const vite = await createViteServer({
-    ...viteConfig,
+    ...resolvedConfig,
     configFile: false,
     server: serverOptions,
     appType: "custom",
