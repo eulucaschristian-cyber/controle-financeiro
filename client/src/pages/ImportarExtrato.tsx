@@ -129,16 +129,16 @@ export default function ImportarExtrato() {
             <span className="font-bold">⚠️ {semCategoria} lançamento{semCategoria > 1 ? "s" : ""}</span> classificado{semCategoria > 1 ? "s" : ""} como "Compras Online" — revise se necessário.
           </div>
         )}
-        <div className="grid grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           {[
             { label: "Despesas", value: fBRL(totalDesp), color: "text-red-600" },
             { label: "Creditos", value: fBRL(totalRec), color: "text-green-600" },
             { label: "Lancamentos", value: String(transacoes.length), color: "text-gray-800" },
             { label: "Faturas", value: String(faturas.length), color: "text-blue-600" },
           ].map((m) => (
-            <div key={m.label} className="bg-white rounded-xl border p-4">
+            <div key={m.label} className="bg-white rounded-xl border p-3 sm:p-4 min-w-0">
               <p className="text-xs text-gray-400 uppercase mb-1">{m.label}</p>
-              <p className={`text-xl font-bold ${m.color}`}>{m.value}</p>
+              <p className={`text-lg sm:text-xl font-bold truncate ${m.color}`}>{m.value}</p>
             </div>
           ))}
         </div>
@@ -156,6 +156,8 @@ export default function ImportarExtrato() {
                 </div>
                 <span className="text-sm font-bold text-red-600">{fBRL(totalFat)}</span>
               </div>
+              {/* No celular a tabela rola na horizontal dentro do card, sem estourar a página */}
+              <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b">
@@ -204,6 +206,7 @@ export default function ImportarExtrato() {
                   })}
                 </tbody>
               </table>
+              </div>
             </div>
           );
         })}

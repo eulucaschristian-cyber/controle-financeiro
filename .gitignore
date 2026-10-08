@@ -7,3 +7,6 @@ dist/
 server.log
 server-error.log
 .manus-logs/
+
+# Dumps locais do banco (contêm dados financeiros pessoais)
+backup*.sql

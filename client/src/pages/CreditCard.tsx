@@ -268,22 +268,22 @@ export default function CreditCardPage() {
           <div className="space-y-2">
             {creditCardList.map((transaction) => (
               <Card key={transaction.id} className="border-0 shadow-sm">
-                <CardContent className="p-4 flex items-center justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium">{transaction.description}</p>
+                <CardContent className="p-4 flex items-center justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <p className="text-sm font-medium truncate">{transaction.description}</p>
                       {transaction.installments > 1 && (
-                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
+                        <span className="inline-flex shrink-0 items-center px-2 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
                           {transaction.installmentNumber}/{transaction.installments}x
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-muted-foreground truncate">
                       {transaction.category} • {format(new Date(transaction.date + "T00:00:00"), "dd 'de' MMMM", { locale: ptBR })}
                     </p>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <p className="text-sm font-bold">
+                  <div className="flex items-center gap-1 shrink-0">
+                    <p className="text-sm font-bold whitespace-nowrap mr-1">
                       {formatCurrency(parseFloat(transaction.amount))}
                     </p>
                     <Button

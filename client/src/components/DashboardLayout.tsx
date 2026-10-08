@@ -119,11 +119,14 @@ function DashboardLayoutContent({
 }: DashboardLayoutContentProps) {
   const { user, logout } = useAuth();
   const [location, setLocation] = useLocation();
-  const { state, toggleSidebar } = useSidebar();
+  const { state, toggleSidebar, setOpenMobile } = useSidebar();
   const isCollapsed = state === "collapsed";
   const [isResizing, setIsResizing] = useState(false);
   const sidebarRef = useRef<HTMLDivElement>(null);
-  const activeMenuItem = menuItems.find(item => item.path === location);
+  // Subpáginas (ex: /credit-card/faturas) herdam o título do item pai no topo mobile
+  const activeMenuItem =
+    menuItems.find(item => item.path === location) ??
+    menuItems.find(item => item.path !== "/" && location.startsWith(item.path + "/"));
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -202,12 +205,16 @@ function DashboardLayoutContent({
           <SidebarContent className="gap-0 py-3">
             <SidebarMenu className="px-2 gap-0.5">
               {menuItems.map(item => {
-                const isActive = location === item.path;
+                const isActive = item.path === activeMenuItem?.path;
                 return (
                   <SidebarMenuItem key={item.path}>
                     <SidebarMenuButton
                       isActive={isActive}
-                      onClick={() => setLocation(item.path)}
+                      onClick={() => {
+                        setLocation(item.path);
+                        // No celular o menu é uma gaveta por cima da tela — fecha ao navegar
+                        if (isMobile) setOpenMobile(false);
+                      }}
                       tooltip={item.label}
                       className={`h-9 rounded-lg transition-all font-normal text-sm
                         ${isActive
@@ -271,7 +278,7 @@ function DashboardLayoutContent({
       <SidebarInset>
         {/* Mobile top bar */}
         {isMobile && (
-          <div className="flex h-14 items-center justify-between bg-card/80 px-3 backdrop-blur-md border-b border-border/50 sticky top-0 z-40">
+          <div className="flex h-14 items-center justify-between bg-card/80 px-3 backdrop-blur-md border-b border-border/50 sticky top-0 z-40 box-content pt-[env(safe-area-inset-top)]">
             <div className="flex items-center gap-3">
               <SidebarTrigger className="h-9 w-9 rounded-xl bg-card border border-border/50 shadow-sm" />
               <span className="font-semibold text-foreground">
@@ -281,13 +288,14 @@ function DashboardLayoutContent({
           </div>
         )}
 
-        <main className="flex-1 p-4 max-w-2xl mx-auto w-full">{children}</main>
+        <main className="flex-1 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] max-w-2xl mx-auto w-full min-w-0">{children}</main>
 
         {/* Mobile FAB */}
         {isMobile && location === "/" && (
           <button
             onClick={() => setLocation("/add")}
-            className="fixed bottom-6 right-6 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-xl hover:shadow-2xl hover:scale-105 transition-all flex items-center justify-center z-50 active:scale-95"
+            aria-label="Novo gasto"
+            className="fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom))] right-6 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-xl hover:shadow-2xl hover:scale-105 transition-all flex items-center justify-center z-50 active:scale-95"
           >
             <PlusCircle className="h-7 w-7" />
           </button>

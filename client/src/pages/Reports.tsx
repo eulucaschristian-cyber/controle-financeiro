@@ -12,6 +12,12 @@ function formatCurrency(value: number): string {
   }).format(value);
 }
 
+// "outubro de 2026" → "out/26" — rótulo que cabe no eixo em tela de celular
+function mesCurto(label: string): string {
+  const m = /^(\S{3})\S*\s+de\s+\d{2}(\d{2})$/.exec(label);
+  return m ? `${m[1]}/${m[2]}` : label;
+}
+
 function getMonthName(month: number, year: number): string {
   const date = new Date(year, month - 1);
   return date.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
@@ -330,10 +336,10 @@ export default function ReportsPage() {
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={monthlyData.slice(-12)}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" angle={-45} textAnchor="end" height={80} />
-                  <YAxis />
+                  <XAxis dataKey="month" tickFormatter={mesCurto} tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+                  <YAxis tick={{ fontSize: 11 }} width={44} />
                   <Tooltip formatter={(value: any) => formatCurrency(Number(value))} />
-                  <Legend />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Bar dataKey="income" fill="#10b981" name="Renda" />
                   <Bar dataKey="expenses" fill="#ef4444" name="Gastos (Dinheiro/PIX)" />
                   <Bar dataKey="creditCard" fill="#f97316" name="Gastos (Cartão)" />
@@ -355,10 +361,10 @@ export default function ReportsPage() {
                   }))}
                 >
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" angle={-45} textAnchor="end" height={80} />
-                  <YAxis />
+                  <XAxis dataKey="month" tickFormatter={mesCurto} tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+                  <YAxis tick={{ fontSize: 11 }} width={44} />
                   <Tooltip formatter={(value: any) => formatCurrency(Number(value))} />
-                  <Legend />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Line
                     type="monotone"
                     dataKey="balance"
