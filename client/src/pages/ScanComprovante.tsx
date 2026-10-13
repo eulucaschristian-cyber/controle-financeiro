@@ -62,6 +62,7 @@ export default function ScanComprovante() {
   const [date, setDate] = useState("");
   const [category, setCategory] = useState("compras_online");
   const [paymentMethod, setPaymentMethod] = useState("debito");
+  const [installments, setInstallments] = useState(1);
   const [store, setStore] = useState("");
   const [itens, setItens] = useState<Item[]>([]);
   const [salvarPrecos, setSalvarPrecos] = useState(true);
@@ -155,7 +156,7 @@ export default function ScanComprovante() {
           description: description.trim(),
           amount: amountNum.toFixed(2),
           category: category as any,
-          installments: 1,
+          installments,
         });
       } else {
         // Débito, Pix, dinheiro → vai para lançamentos normais
@@ -246,6 +247,30 @@ export default function ScanComprovante() {
                 ))}
               </div>
             </div>
+            {paymentMethod === "credito" && (
+              <div>
+                <Label>Parcelamento</Label>
+                <select
+                  value={installments}
+                  onChange={(e) => setInstallments(parseInt(e.target.value))}
+                  className="w-full border rounded-md px-3 py-2 text-base bg-background mt-1"
+                >
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => {
+                    const total = parseFloat(amount.replace(",", ".")) || 0;
+                    return (
+                      <option key={n} value={n}>
+                        {n === 1 ? "À vista (1x)" : `${n}x de ${fBRL(total / n)}`}
+                      </option>
+                    );
+                  })}
+                </select>
+                {installments > 1 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Cada parcela entra numa fatura, a partir da atual.
+                  </p>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
 

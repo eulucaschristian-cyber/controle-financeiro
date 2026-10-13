@@ -453,6 +453,15 @@ export async function deleteIncome(id: number, userId: number) {
 
 // === CREDIT CARD HELPERS ===
 
+// Divide o total em centavos; a sobra vai na 1ª parcela (como os bancos fazem),
+// assim a soma das parcelas fecha exatamente com o total da compra
+export function dividirEmParcelas(total: string, parcelas: number): string[] {
+  const totalCents = Math.round(parseFloat(total) * 100);
+  const base = Math.floor(totalCents / parcelas);
+  const resto = totalCents - base * parcelas;
+  return Array.from({ length: parcelas }, (_, i) => ((i === 0 ? base + resto : base) / 100).toFixed(2));
+}
+
 export async function createCreditCardTransaction(data: { userId: number; date: string; description: string; amount: string; category: string; installments: number; billCycle?: string; closingInterval?: number }) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -465,8 +474,7 @@ export async function createCreditCardTransaction(data: { userId: number; date: 
     const groupId = Math.floor(Math.random() * 1000000);
     const insertIds: number[] = [];
 
-    const totalAmount = parseFloat(data.amount);
-    const installmentAmount = (totalAmount / data.installments).toFixed(2);
+    const valoresParcelas = dividirEmParcelas(data.amount, data.installments);
 
     for (let i = 1; i <= data.installments; i++) {
       const installmentDate = new Date(purchaseDate);
@@ -478,7 +486,7 @@ export async function createCreditCardTransaction(data: { userId: number; date: 
         userId: data.userId,
         date: dateStr,
         description: data.description,
-        amount: installmentAmount,
+        amount: valoresParcelas[i - 1],
         category: data.category,
         installments: data.installments,
         installmentNumber: i,
